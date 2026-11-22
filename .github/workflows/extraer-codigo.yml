@@ -1,0 +1,50 @@
+name: Extraer codigo Android para sincronizacion
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/extraer-codigo.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Extraer proyecto Android
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f Diego_cocina_en_casa_proyecto_Android-1.zip
+          mkdir -p /tmp/android-project
+          unzip -q Diego_cocina_en_casa_proyecto_Android-1.zip -d /tmp/android-project
+          PROJECT_DIR="$(dirname "$(find /tmp/android-project -name settings.gradle -print -quit)")"
+          test -n "$PROJECT_DIR"
+          if [ -f android-overrides.tar.gz ]; then
+            tar -xzf android-overrides.tar.gz -C "$PROJECT_DIR"
+          fi
+          rm -rf android-source
+          mkdir -p android-source
+          cp -a "$PROJECT_DIR"/. android-source/
+          echo "Archivos extraidos:"
+          find android-source -maxdepth 5 -type f | sort | head -200
+
+      - name: Guardar codigo extraido en esta rama
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add android-source
+          if git diff --cached --quiet; then
+            echo "No hay cambios nuevos para guardar."
+            exit 0
+          fi
+          git commit -m "Extraer codigo Android para trabajar en sincronizacion"
+          git push
