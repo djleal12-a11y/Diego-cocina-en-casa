@@ -43,8 +43,8 @@ jobs:
           app = Path("app")
           for file in app.rglob("*.java"):
               data = file.read_bytes()
-              data = data.removeprefix(b"\\xef\\xbb\\xbf")
-              data = data.lstrip(b"\\r\\n")
+              data = data.removeprefix(bytes.fromhex("efbbbf"))
+              data = data.lstrip(bytes([10, 13]))
               file.write_bytes(data)
 
           gradle_file = app / "build.gradle"
