@@ -73,8 +73,7 @@ const newUuid=()=>crypto.randomUUID?crypto.randomUUID():"xxxxxxxx-xxxx-4xxx-yxxx
 function applyRoleUI(){
   const seller=currentProfile?.role==="vendedor";
   $("userRole").textContent=(seller?"VENDEDOR":"ADMINISTRADOR")+" · "+(currentProfile?.full_name||currentEmail||"");
-  const hiddenViews=seller?["inventory","clients","settings","reports"]:[];
-  hiddenViews.forEach(id=>{const v=$(id);if(v)v.hidden=true;});
+  ["inventory","clients","settings","reports"].forEach(id=>{const v=$(id);if(v)v.hidden=seller;});
   document.querySelectorAll(".nav-item").forEach(b=>{const id=b.dataset.view;b.hidden=seller?["inventory","clients","settings"].includes(id):false;});
   $("newProductBtn").hidden=seller;
   $("stockForm").closest(".panel").hidden=seller;
