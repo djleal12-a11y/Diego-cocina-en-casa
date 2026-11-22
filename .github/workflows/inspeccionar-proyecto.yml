@@ -1,0 +1,25 @@
+name: Inspeccionar proyecto Android
+
+on:
+  push:
+    paths:
+      - 'Diego_cocina_en_casa_proyecto_Android-1.zip'
+      - '.github/workflows/inspeccionar-proyecto.yml'
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extraer proyecto
+        run: |
+          mkdir proyecto
+          unzip -q Diego_cocina_en_casa_proyecto_Android-1.zip -d proyecto
+          echo "ARCHIVOS DEL PROYECTO"
+          find proyecto -maxdepth 5 -type f | sort
+      - name: Guardar fuente extraída para revisión
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuente-android-extraida
+          path: proyecto/
+          retention-days: 3
