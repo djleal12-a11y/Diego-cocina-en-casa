@@ -6,7 +6,7 @@ on:
     paths:
       - '.github/workflows/build-apk.yml'
       - 'Diego_cocina_en_casa_proyecto_Android-1.zip'
-      - 'android-overrides/**'
+      - 'android-overrides.tar.gz'
 
 jobs:
   build:
@@ -23,8 +23,8 @@ jobs:
           unzip -q Diego_cocina_en_casa_proyecto_Android-1.zip -d android-project
           PROJECT_DIR=$(dirname "$(find android-project -name settings.gradle -print -quit)")
           test -n "$PROJECT_DIR"
-          if [ -d android-overrides ]; then
-            cp -a android-overrides/. "$PROJECT_DIR"/
+          if [ -f android-overrides.tar.gz ]; then
+            tar -xzf android-overrides.tar.gz -C "$PROJECT_DIR"
           fi
 
       - name: Configurar Java
