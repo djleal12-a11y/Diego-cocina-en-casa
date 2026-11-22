@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/build-apk.yml'
       - 'Diego_cocina_en_casa_proyecto_Android-1.zip'
+      - 'android-overrides/**'
 
 jobs:
   build:
@@ -15,11 +16,16 @@ jobs:
       - name: Descargar repositorio
         uses: actions/checkout@v4
 
-      - name: Verificar y descomprimir proyecto
+      - name: Verificar, descomprimir y aplicar mejoras
         run: |
           test -f Diego_cocina_en_casa_proyecto_Android-1.zip
           mkdir -p android-project
           unzip -q Diego_cocina_en_casa_proyecto_Android-1.zip -d android-project
+          PROJECT_DIR=$(dirname "$(find android-project -name settings.gradle -print -quit)")
+          test -n "$PROJECT_DIR"
+          if [ -d android-overrides ]; then
+            cp -a android-overrides/. "$PROJECT_DIR"/
+          fi
 
       - name: Configurar Java
         uses: actions/setup-java@v4
