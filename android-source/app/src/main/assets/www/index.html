@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#17251f">
+  <meta name="description" content="Gestión de productos, inventario, ventas y clientes de Diego cocina en casa.">
+  <title>Diego cocina en casa</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brandmark">DC</div>
+    <div class="brand">
+      <h1>Diego cocina en casa</h1>
+      <p>ADMINISTRACIÓN · TEMPORADA 2026</p>
+    </div>
+    <span id="userRole" class="user-role" hidden></span>
+    <button id="logoutBtn" class="text-btn" hidden>Cerrar sesión</button>
+    <button id="installBtn" class="icon-btn" hidden aria-label="Instalar aplicación">＋</button>
+  </header>
+
+  <section id="authGate" class="auth-gate">
+    <form id="loginForm" class="auth-card">
+      <div class="brandmark auth-mark">DC</div>
+      <span class="eyebrow">ACCESO SEGURO</span>
+      <h2>Bienvenido</h2>
+      <p>Ingresa con el usuario creado en Supabase.</p>
+      <label>Correo electrónico<input id="loginEmail" type="email" autocomplete="username" required placeholder="tu correo"></label>
+      <label>Contraseña<input id="loginPassword" type="password" autocomplete="current-password" required placeholder="Tu contraseña"></label>
+      <button class="primary full" type="submit">Iniciar sesión</button>
+      <p id="authMessage" class="auth-message" role="status"></p>
+    </form>
+  </section>
+  <div id="appShell" hidden>
+  <main>
+    <section id="dashboard" class="view active">
+      <div class="welcome">
+        <div><span class="eyebrow">PANEL GENERAL</span><h2>Tu negocio, bajo control.</h2><p>Resumen de ventas, inventario y cuentas por cobrar.</p></div>
+        <div class="date-chip" id="todayLabel"></div>
+      </div>
+      <div class="stats">
+        <article class="stat"><span>Ventas registradas</span><strong id="statSales">$0</strong></article>
+        <article class="stat"><span>Dinero recibido</span><strong id="statPaid">$0</strong></article>
+        <article class="stat"><span>Por cobrar</span><strong id="statPending">$0</strong></article>
+        <article class="stat"><span>Unidades disponibles</span><strong id="statUnits">0</strong></article>
+      </div>
+      <div class="section-head"><div><span class="eyebrow">MOVIMIENTO</span><h3>Actividad reciente</h3></div><button class="text-btn" data-go="history">Ver historial →</button></div>
+      <div id="recentSales" class="stack empty">Todavía no hay ventas registradas.</div>
+      <div class="section-head"><div><span class="eyebrow">CATÁLOGO</span><h3>Disponibilidad</h3></div><button class="text-btn" data-go="catalog">Ver productos →</button></div>
+      <div id="availabilityList" class="stack empty">Agrega tu primer producto para comenzar.</div>
+    </section>
+
+    <section id="catalog" class="view">
+      <div class="page-head"><span class="eyebrow">TUS PRODUCTOS</span><h2>Catálogo</h2><p>Administra fotografías, precios y disponibilidad.</p></div>
+      <button class="primary full" id="newProductBtn">＋ Agregar producto</button>
+      <div id="productList" class="product-grid empty">Aún no has agregado productos.</div>
+    </section>
+
+    <section id="inventory" class="view">
+      <div class="page-head"><span class="eyebrow">CONTROL DE EXISTENCIAS</span><h2>Inventario</h2><p>Registra entradas de unidades y consulta las existencias.</p></div>
+      <div class="panel">
+        <h3>Ingresar existencias</h3>
+        <form id="stockForm" class="form-grid">
+          <label class="wide">Producto<select id="stockProduct" required></select></label>
+          <label class="wide">Unidades que ingresan<input id="stockQty" type="number" min="1" step="1" value="1" required></label>
+          <button class="primary wide" type="submit">Actualizar inventario</button>
+        </form>
+      </div>
+      <div class="section-head"><div><span class="eyebrow">RESUMEN</span><h3>Existencias actuales</h3></div></div>
+      <div id="inventoryList" class="stack empty">No hay productos en inventario.</div>
+    </section>
+
+    <section id="sales" class="view">
+      <div class="page-head"><span class="eyebrow">NUEVO PEDIDO</span><h2>Registrar venta</h2><p>Asocia cada pedido a un cliente y controla su pago.</p></div>
+      <form id="saleForm" class="panel form-grid">
+        <label class="wide">Cliente<input id="saleClient" list="clientOptions" placeholder="Nombre del cliente" autocomplete="name"><datalist id="clientOptions"></datalist></label>
+        <label class="wide">Producto<select id="saleProduct" required></select></label>
+        <label>Cantidad<input id="saleQty" type="number" min="1" step="1" value="1" required></label>
+        <label>Fecha<input id="saleDate" type="date" required></label>
+        <div class="total-preview wide"><span>Total del pedido</span><strong id="saleTotal">$0</strong></div>
+        <label>Abono inicial (COP)<input id="initialPayment" type="number" min="0" step="1" value="0"></label>
+        <label>Medio de pago del abono<select id="initialPaymentMethod"><option value="">Sin abono inicial</option><option>Efectivo</option><option>Transferencia con llaves</option><option>Nequi</option><option>Otros medios de pago</option></select></label>
+        <p class="muted wide">Puedes registrar la venta sin abono, con un abono parcial o pagarla completa. Los siguientes abonos se agregan desde el historial.</p>
+        <button class="primary wide" type="submit">Confirmar venta</button>
+      </form>
+    </section>
+
+    <section id="clients" class="view">
+      <div class="page-head"><span class="eyebrow">RELACIÓN CON CLIENTES</span><h2>Clientes</h2><p>Consulta sus compras y saldos pendientes.</p></div>
+      <div id="clientList" class="stack empty">Los clientes aparecerán al registrar sus pedidos.</div>
+    </section>
+
+    <section id="history" class="view">
+      <div class="page-head"><span class="eyebrow">TODAS LAS OPERACIONES</span><h2>Historial</h2><p>Revisa pedidos y actualiza los pagos pendientes.</p></div>
+      <div class="toolbar"><input id="historySearch" type="search" placeholder="Buscar cliente o producto…"></div>
+      <div id="historyList" class="stack empty">No hay operaciones registradas.</div>
+    </section>
+
+    <section id="settings" class="view">
+      <div class="page-head"><span class="eyebrow">SEGURIDAD DE TUS DATOS</span><h2>Respaldo</h2><p>Guarda una copia de tus registros y recupérala cuando la necesites.</p></div>
+      <div class="panel">
+        <h3>Exportar información</h3><p class="muted">Descarga un archivo con productos, fotografías, clientes y ventas.</p>
+        <button class="primary full" id="exportBtn">Descargar copia de seguridad</button>
+      </div>
+      <div class="panel">
+        <h3>Reportes de ventas y recaudos</h3><p class="muted">Consulta cuánto has vendido, cuánto has recibido y cuánto queda pendiente.</p>
+        <button class="primary full" data-go="reports">Ver reportes</button>
+      </div>
+      <div class="panel">
+        <h3>Restaurar información</h3><p class="muted">Importa una copia anterior. Los datos actuales serán reemplazados.</p>
+        <label class="file-button">Seleccionar copia de seguridad<input id="importFile" type="file" accept="application/json,.json"></label>
+      </div>
+      <div class="panel note"><strong>Importante</strong><p>Los datos se guardan en este dispositivo y navegador. Exporta una copia periódicamente. Si borras los datos del navegador o cambias de celular, necesitarás restaurar tu copia.</p></div>
+      <p class="version">Diego cocina en casa · Versión inicial 1.0</p>
+    </section>
+
+    <section id="reports" class="view">
+      <div class="page-head"><span class="eyebrow">CONTROL DEL NEGOCIO</span><h2>Reportes</h2><p>Resumen de ventas, recaudos, saldos y medios de pago.</p></div>
+      <div class="panel form-grid report-filter">
+        <label>Desde<input id="reportFrom" type="date"></label>
+        <label>Hasta<input id="reportTo" type="date"></label>
+      </div>
+      <div id="reportResults" class="stack"></div>
+    </section>
+  </main>
+  </div>
+
+  <nav class="bottom-nav" aria-label="Navegación principal">
+    <button class="nav-item selected" data-view="dashboard"><span>⌂</span>Inicio</button>
+    <button class="nav-item" data-view="catalog"><span>▦</span>Catálogo</button>
+    <button class="nav-item" data-view="sales"><span>＋</span>Ventas</button>
+    <button class="nav-item" data-view="inventory"><span>▤</span>Stock</button>
+    <button class="nav-item" data-view="clients"><span>♙</span>Clientes</button>
+    <button class="nav-item" data-view="settings"><span>⚙</span>Más</button>
+  </nav>
+
+  <dialog id="productDialog">
+    <form id="productForm" method="dialog" class="dialog-form">
+      <div class="dialog-head"><div><span class="eyebrow">CATÁLOGO</span><h2 id="productDialogTitle">Nuevo producto</h2></div><button type="button" class="close-btn" data-close="productDialog">×</button></div>
+      <input type="hidden" id="productId">
+      <label>Nombre del producto<input id="productName" required maxlength="70" placeholder="Ej. Pan artesanal"></label>
+      <label>Descripción<textarea id="productDescription" rows="2" placeholder="Detalles del producto"></textarea></label>
+      <div class="two-col"><label>Precio de venta (COP)<input id="productPrice" type="number" min="1" step="1" required placeholder="15000"></label><label>Unidades iniciales<input id="productStock" type="number" min="0" step="1" value="0" required></label></div>
+      <label>Disponibilidad<select id="productStatus"><option>Disponible</option><option>Agotado</option><option>Próximamente</option></select></label>
+      <label>Fotografía del producto<input id="productPhoto" type="file" accept="image/*" capture="environment"><small class="muted">Puedes tomar una foto o elegirla desde tu galería.</small></label>
+      <div id="photoPreview" class="photo-preview">Vista previa de la fotografía</div>
+      <div class="dialog-actions"><button type="button" class="secondary" data-close="productDialog">Cancelar</button><button class="primary" type="submit">Guardar producto</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="paymentDialog">
+    <form id="paymentForm" class="dialog-form">
+      <div class="dialog-head"><div><span class="eyebrow">CUENTA DEL CLIENTE</span><h2>Registrar abono</h2></div><button type="button" class="close-btn" data-close="paymentDialog">×</button></div>
+      <p id="paymentDescription" class="muted"></p>
+      <input type="hidden" id="paymentSaleId">
+      <label>Valor del abono (COP)<input id="paymentAmount" type="number" min="1" step="1" required></label>
+      <label>Fecha del abono<input id="paymentDate" type="date" required></label>
+      <label>Medio de pago<select id="paymentMethod" required><option value="">Selecciona un medio</option><option>Efectivo</option><option>Transferencia con llaves</option><option>Nequi</option><option>Otros medios de pago</option></select></label>
+      <div class="dialog-actions"><button type="button" class="secondary" data-close="paymentDialog">Cancelar</button><button class="primary" type="submit">Guardar abono</button></div>
+    </form>
+  </dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="app.js"></script>
+</body>
+</html>

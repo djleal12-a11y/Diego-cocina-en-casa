@@ -1,0 +1,19 @@
+{
+  "name": "Diego cocina en casa",
+  "short_name": "Diego cocina",
+  "description": "Gestión de catálogo, inventario, ventas y clientes.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f7f2",
+  "theme_color": "#17251f",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "lang": "es-CO"
+}
