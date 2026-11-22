@@ -65,3 +65,185 @@ async function verifySession(session){if(!session){$("authGate").hidden=false;$(
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();authMessage("Verificando acceso…");const {data,error}=await supabaseClient.auth.signInWithPassword({email:$("loginEmail").value.trim(),password:$("loginPassword").value});if(error){authMessage("No se pudo iniciar sesión. Verifica el correo y la contraseña.");return;}try{await verifySession(data.session);authMessage("");}catch(err){console.error(err);authMessage("No se pudo cargar la aplicación. Comprueba tu conexión.");}});
 $("logoutBtn").onclick=async()=>{await supabaseClient.auth.signOut();location.reload();};
 (async()=>{try{if(!window.supabase?.createClient)throw new Error("No se pudo cargar el cliente de conexión.");supabaseClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);const {data,error}=await supabaseClient.auth.getSession();if(error)throw error;await verifySession(data.session);}catch(e){console.error(e);$("authGate").hidden=false;$("appShell").hidden=true;authMessage("No se pudo conectar. Revisa Internet e inténtalo nuevamente.");}})();
+
+
+// ===== Cloud synchronization and role-based interface =====
+let currentProfile=null, realtimeChannel=null, cloudBusy=false;
+const newUuid=()=>crypto.randomUUID?crypto.randomUUID():"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==="x"?r:(r&3|8)).toString(16);});
+function applyRoleUI(){
+  const seller=currentProfile?.role==="vendedor";
+  $("userRole").textContent=(seller?"VENDEDOR":"ADMINISTRADOR")+" · "+(currentProfile?.full_name||supabaseClient.auth.getUser?.email||"");
+  const hiddenViews=seller?["inventory","clients","settings","reports"]:["reports"];
+  hiddenViews.forEach(id=>{const v=$(id);if(v)v.hidden=true;});
+  document.querySelectorAll(".nav-item").forEach(b=>{const id=b.dataset.view;b.hidden=seller?["inventory","clients","settings"].includes(id):false;});
+  $("newProductBtn").hidden=seller;
+  $("stockForm").closest(".panel").hidden=seller;
+  $("initialPayment").closest("label").hidden=seller;
+  $("initialPaymentMethod").closest("label").hidden=seller;
+  $("paymentDialog").hidden=seller;
+  if(seller && ["inventory","clients","settings","reports"].includes(document.querySelector(".view.active")?.id))go("dashboard");
+}
+async function cloudProductUpsert(p){
+  if(currentProfile?.role!=="admin")throw new Error("Solo el administrador puede modificar productos.");
+  const cloudId=p.cloud_id||newUuid();
+  const payload={id:cloudId,name:p.name,description:p.description||null,price:Number(p.price)||0,stock:Number(p.stock)||0,status:p.status||"Disponible",photo_url:p.photo||null};
+  const {data,error}=await supabaseClient.from("products").upsert(payload).select().single();
+  if(error)throw error;
+  p.cloud_id=data.id;return p;
+}
+async function importLegacyAdminSales(){
+  if(currentProfile?.role!=="admin")return;
+  const localSales=(await all("sales")).map(normalizeSale);
+  const localProducts=await all("products");
+  for(const s of localSales){
+    if(!s.cloud_request_id)s.cloud_request_id=newUuid();
+    await put("sales",s);
+    const p=localProducts.find(x=>x.id===s.productId);
+    if(!p?.cloud_id)continue;
+    let remote=s.cloud_id?{id:s.cloud_id}:null;
+    if(!remote){
+      const found=await supabaseClient.from("sales").select("id").eq("seller_id",currentProfile.id).eq("client_request_id",s.cloud_request_id).maybeSingle();
+      if(found.error)throw found.error;
+      remote=found.data;
+    }
+    if(!remote){
+      const ins=await supabaseClient.from("sales").insert({seller_id:currentProfile.id,total:s.total,payment_status:"Pendiente",sale_date:s.date||today(),customer_name:s.client||null,client_request_id:s.cloud_request_id,paid_amount:0,balance:s.total}).select("id").single();
+      if(ins.error)throw ins.error;remote=ins.data;
+    }
+    s.cloud_id=remote.id;
+    const itemCheck=await supabaseClient.from("sale_items").select("id").eq("sale_id",remote.id).limit(1);
+    if(itemCheck.error)throw itemCheck.error;
+    if(!itemCheck.data.length){
+      const item=await supabaseClient.from("sale_items").insert({sale_id:remote.id,product_id:p.cloud_id,product_name:s.product,quantity:s.qty,unit_price:s.unitPrice,subtotal:s.total});
+      if(item.error)throw item.error;
+    }
+    for(const payment of (s.payments||[])){
+      if(payment.cloud_id)continue;
+      const pay=await supabaseClient.from("payments").insert({sale_id:remote.id,seller_id:currentProfile.id,amount:payment.amount,payment_date:(payment.date||today())+"T12:00:00",payment_method:PAYMENT_METHODS.includes(payment.method)?payment.method:"No especificado",notes:payment.note||null}).select("id").single();
+      if(pay.error)throw pay.error;payment.cloud_id=pay.data.id;
+    }
+    await put("sales",s);
+  }
+}
+async function seedAdminProductsIfCloudEmpty(){
+  if(currentProfile?.role!=="admin")return;
+  const remote=await supabaseClient.from("products").select("id").limit(1);
+  if(remote.error)throw remote.error;
+  if(remote.data.length)return;
+  const local=await all("products");
+  for(const p of local){await cloudProductUpsert(p);await put("products",p);}
+}
+async function pullCloudData(){
+  if(cloudBusy)return;cloudBusy=true;
+  try{
+    const [pr,sr,ir]=await Promise.all([
+      supabaseClient.from("products").select("*").order("created_at",{ascending:true}),
+      supabaseClient.from("sales").select("*").order("created_at",{ascending:false}),
+      supabaseClient.from("sale_items").select("*")
+    ]);
+    if(pr.error)throw pr.error;if(sr.error)throw sr.error;if(ir.error)throw ir.error;
+    const localProducts=await all("products"), productByCloud=new Map(localProducts.filter(p=>p.cloud_id).map(p=>[p.cloud_id,p]));
+    const nextProducts=[];
+    for(const rp of pr.data){
+      const old=productByCloud.get(rp.id)||localProducts.find(p=>p.name===rp.name&&!p.cloud_id);
+      const p={id:old?.id||Date.now()+Math.floor(Math.random()*100000),cloud_id:rp.id,name:rp.name,description:rp.description||"",price:Number(rp.price)||0,stock:Number(rp.stock)||0,status:rp.status||"Disponible",photo:rp.photo_url||old?.photo||""};
+      nextProducts.push(p);await put("products",p);
+    }
+    const productLocalId=new Map(nextProducts.map(p=>[p.cloud_id,p.id]));
+    let remotePayments=[];
+    if(currentProfile?.role==="admin"){
+      const pay=await supabaseClient.from("payments").select("*").order("payment_date",{ascending:true});
+      if(pay.error)throw pay.error;remotePayments=pay.data;
+    }
+    const paymentBySale=new Map();
+    remotePayments.forEach(p=>{const a=paymentBySale.get(p.sale_id)||[];a.push({id:p.id,cloud_id:p.id,date:(p.payment_date||"").slice(0,10),created:new Date(p.payment_date||Date.now()).getTime(),amount:Number(p.amount)||0,method:p.payment_method||"No especificado",note:p.notes||""});paymentBySale.set(p.sale_id,a);});
+    const localSales=await all("sales"), saleByCloud=new Map(localSales.filter(s=>s.cloud_id).map(s=>[s.cloud_id,s]));
+    const itemsBySale=new Map();ir.data.forEach(i=>{const a=itemsBySale.get(i.sale_id)||[];a.push(i);itemsBySale.set(i.sale_id,a);});
+    for(const rs of sr.data){
+      const item=(itemsBySale.get(rs.id)||[])[0];if(!item)continue;
+      const old=saleByCloud.get(rs.id);
+      const paid=Number(rs.paid_amount)||0;
+      const payments=currentProfile?.role==="admin"?(paymentBySale.get(rs.id)||[]):(paid>0?[{id:"cloud-summary-"+rs.id,date:(rs.created_at||"").slice(0,10),created:new Date(rs.created_at||Date.now()).getTime(),amount:paid,method:"Abono registrado por administrador"}]:[]);
+      const s={id:old?.id||Date.now()+Math.floor(Math.random()*100000),cloud_id:rs.id,cloud_request_id:rs.client_request_id||old?.cloud_request_id,created:new Date(rs.created_at||Date.now()).getTime(),date:rs.sale_date,client:rs.customer_name||"",product:item.product_name,productId:productLocalId.get(item.product_id)||old?.productId||0,qty:Number(item.quantity)||1,unitPrice:Number(item.unit_price)||0,total:Number(rs.total)||0,payments,payment:rs.payment_status||"Pendiente"};
+      await put("sales",s);
+    }
+    products=await all("products");sales=(await all("sales")).map(normalizeSale);renderAll();applyRoleUI();
+  }finally{cloudBusy=false;}
+}
+async function cloudBootstrap(){
+  if(currentProfile?.role==="admin"){
+    await seedAdminProductsIfCloudEmpty();
+    await importLegacyAdminSales();
+  }
+  await pullCloudData();
+  if(realtimeChannel)await supabaseClient.removeChannel(realtimeChannel);
+  realtimeChannel=supabaseClient.channel("diego-cocina-shared-data")
+    .on("postgres_changes",{event:"*",schema:"public",table:"products"},()=>setTimeout(()=>pullCloudData().catch(e=>console.error(e)),250))
+    .on("postgres_changes",{event:"*",schema:"public",table:"sales"},()=>setTimeout(()=>pullCloudData().catch(e=>console.error(e)),250))
+    .subscribe();
+}
+async function startAuthenticatedApp(){
+  db=await openDB();await refresh();applyRoleUI();
+  try{await cloudBootstrap();toast("Datos sincronizados con la nube.");}
+  catch(e){console.error("Cloud sync:",e);toast("No se pudo sincronizar. Revisa tu conexión.");}
+  if("serviceWorker" in navigator&&location.protocol.startsWith("http"))navigator.serviceWorker.register("./sw.js").catch(()=>{});
+}
+async function verifySession(session){
+  if(!session){currentProfile=null;$("authGate").hidden=false;$("appShell").hidden=true;return;}
+  const {data,error}=await supabaseClient.from("profiles").select("id,full_name,role").eq("id",session.user.id).single();
+  if(error||!data){await supabaseClient.auth.signOut();$("authGate").hidden=false;$("appShell").hidden=true;authMessage("No se pudo validar tu perfil. Revisa que el usuario tenga un perfil activo.");return;}
+  currentProfile=data;showAuthenticated(data,session.user.email||"");applyRoleUI();await startAuthenticatedApp();
+}
+const originalRenderProducts=renderProducts;
+renderProducts=function(){originalRenderProducts();if(currentProfile?.role==="vendedor")document.querySelectorAll("#productList [data-edit],#productList [data-delete]").forEach(b=>b.remove());};
+const originalRenderHistory=renderHistory;
+renderHistory=function(){originalRenderHistory();if(currentProfile?.role==="vendedor")document.querySelectorAll("#historyList [data-payment]").forEach(b=>b.remove());};
+async function deleteProduct(id){
+  if(currentProfile?.role!=="admin")return;
+  const p=products.find(x=>x.id===id);if(!p)return;
+  if(!confirm("¿Eliminar este producto del catálogo? El historial de ventas se conservará."))return;
+  if(p.cloud_id){const {error}=await supabaseClient.from("products").delete().eq("id",p.cloud_id);if(error){toast("No se puede eliminar porque está vinculado a ventas. Márcalo como agotado.");return;}}
+  await del("products",id);await refresh();toast("Producto eliminado.");
+}
+$("productForm").addEventListener("submit",async e=>{
+  e.preventDefault();e.stopImmediatePropagation();if(currentProfile?.role!=="admin")return;
+  const id=$("productId").value?Number($("productId").value):Date.now(),old=products.find(p=>p.id===id);
+  const stock=Number($("productStock").value);let status=$("productStatus").value;if(stock===0&&status==="Disponible")status="Agotado";
+  const p={id,cloud_id:old?.cloud_id,name:$("productName").value.trim(),description:$("productDescription").value.trim(),price:Number($("productPrice").value),stock,status,photo:photoData};
+  try{await cloudProductUpsert(p);await put("products",p);$("productDialog").close();await pullCloudData();toast(old?"Producto actualizado y sincronizado.":"Producto agregado y sincronizado.");}
+  catch(err){console.error(err);toast("No se pudo guardar en la nube. No se modificó el catálogo.");}
+},true);
+$("stockForm").addEventListener("submit",async e=>{
+  e.preventDefault();e.stopImmediatePropagation();if(currentProfile?.role!=="admin")return;
+  const id=Number($("stockProduct").value),qty=Number($("stockQty").value),p=products.find(x=>x.id===id);if(!p||qty<1)return;
+  const next={...p,stock:p.stock+qty,status:p.stock+qty>0?"Disponible":p.status};
+  try{await cloudProductUpsert(next);await put("products",next);$("stockQty").value=1;await pullCloudData();toast("Inventario actualizado en ambos celulares.");}
+  catch(err){console.error(err);toast("No se pudo actualizar el inventario en la nube.");}
+},true);
+$("saleForm").addEventListener("submit",async e=>{
+  e.preventDefault();e.stopImmediatePropagation();
+  const p=products.find(x=>x.id===Number($("saleProduct").value)),qty=Number($("saleQty").value);
+  if(!p||!p.cloud_id||qty<1){toast("El producto todavía no está sincronizado.");return;}
+  const initial=currentProfile?.role==="admin"?(Number($("initialPayment").value)||0):0;
+  const total=p.price*qty,method=$("initialPaymentMethod").value;
+  if(qty>p.stock){toast("No hay existencias suficientes.");return;}
+  if(!Number.isInteger(initial)||initial<0||initial>total|| (initial>0&&!PAYMENT_METHODS.includes(method))){toast("Revisa el abono inicial y su medio de pago.");return;}
+  try{
+    const requestId=newUuid();
+    const {data,error}=await supabaseClient.rpc("create_sale_with_item",{p_client_request_id:requestId,p_product_id:p.cloud_id,p_product_name:p.name,p_quantity:qty,p_unit_price:p.price,p_sale_date:$("saleDate").value||today(),p_customer_name:$("saleClient").value.trim()||null});
+    if(error)throw error;
+    const saleId=Array.isArray(data)?data[0]?.sale_id:data?.sale_id;
+    if(initial>0){const payment=await supabaseClient.rpc("record_sale_payment",{p_sale_id:saleId,p_amount:initial,p_payment_method:method,p_payment_date:$("saleDate").value||today()});if(payment.error)throw payment.error;}
+    $("saleClient").value="";$("saleQty").value=1;$("initialPayment").value=0;$("saleProduct").value="";$("initialPaymentMethod").value="";
+    await pullCloudData();go("history");toast("Venta registrada. El inventario se actualizó en ambos celulares.");
+  }catch(err){console.error(err);toast(err.message||"No se pudo registrar la venta en la nube.");}
+},true);
+$("paymentForm").addEventListener("submit",async e=>{
+  e.preventDefault();e.stopImmediatePropagation();if(currentProfile?.role!=="admin")return;
+  const local=sales.find(s=>s.id===Number($("paymentSaleId").value)),amount=Number($("paymentAmount").value),method=$("paymentMethod").value;
+  if(!local?.cloud_id){toast("La venta todavía no está sincronizada.");return;}
+  try{
+    const {error}=await supabaseClient.rpc("record_sale_payment",{p_sale_id:local.cloud_id,p_amount:amount,p_payment_method:method,p_payment_date:$("paymentDate").value||today()});
+    if(error)throw error;$("paymentDialog").close();await pullCloudData();toast("Abono registrado y saldo actualizado en ambos celulares.");
+  }catch(err){console.error(err);toast(err.message||"No se pudo registrar el abono.");}
+},true);
