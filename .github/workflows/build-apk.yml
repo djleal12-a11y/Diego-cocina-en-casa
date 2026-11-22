@@ -1,0 +1,43 @@
+
+name: Construir APK Android
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-apk.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Descomprimir proyecto
+        run: |
+          mkdir android-project
+          unzip -q Diego_cocina_en_casa_proyecto_Android.zip -d android-project
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Construir APK
+        working-directory: android-project
+        run: gradle assembleDebug
+
+      - name: Guardar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Diego-Cocina-en-Casa-APK
+          path: android-project/app/build/outputs/apk/debug/app-debug.apk
+ni
