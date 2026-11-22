@@ -18,7 +18,7 @@ jobs:
       - name: Descomprimir proyecto
         run: |
           mkdir android-project
-          unzip -q Diego_cocina_en_casa_proyecto_Android1.zip -d android-project
+          unzip -q Diego_cocina_en_casa_proyecto_Android-1.zip -d android-project
 
       - name: Configurar Java
         uses: actions/setup-java@v4
