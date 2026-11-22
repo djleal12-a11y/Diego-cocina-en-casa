@@ -68,12 +68,12 @@ $("logoutBtn").onclick=async()=>{await supabaseClient.auth.signOut();location.re
 
 
 // ===== Cloud synchronization and role-based interface =====
-let currentProfile=null, realtimeChannel=null, cloudBusy=false;
+let currentProfile=null, currentEmail="", realtimeChannel=null, cloudBusy=false;
 const newUuid=()=>crypto.randomUUID?crypto.randomUUID():"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==="x"?r:(r&3|8)).toString(16);});
 function applyRoleUI(){
   const seller=currentProfile?.role==="vendedor";
-  $("userRole").textContent=(seller?"VENDEDOR":"ADMINISTRADOR")+" · "+(currentProfile?.full_name||supabaseClient.auth.getUser?.email||"");
-  const hiddenViews=seller?["inventory","clients","settings","reports"]:["reports"];
+  $("userRole").textContent=(seller?"VENDEDOR":"ADMINISTRADOR")+" · "+(currentProfile?.full_name||currentEmail||"");
+  const hiddenViews=seller?["inventory","clients","settings","reports"]:[];
   hiddenViews.forEach(id=>{const v=$(id);if(v)v.hidden=true;});
   document.querySelectorAll(".nav-item").forEach(b=>{const id=b.dataset.view;b.hidden=seller?["inventory","clients","settings"].includes(id):false;});
   $("newProductBtn").hidden=seller;
@@ -192,7 +192,7 @@ async function verifySession(session){
   if(!session){currentProfile=null;$("authGate").hidden=false;$("appShell").hidden=true;return;}
   const {data,error}=await supabaseClient.from("profiles").select("id,full_name,role").eq("id",session.user.id).single();
   if(error||!data){await supabaseClient.auth.signOut();$("authGate").hidden=false;$("appShell").hidden=true;authMessage("No se pudo validar tu perfil. Revisa que el usuario tenga un perfil activo.");return;}
-  currentProfile=data;showAuthenticated(data,session.user.email||"");applyRoleUI();await startAuthenticatedApp();
+  currentProfile=data;currentEmail=session.user.email||"";showAuthenticated(data,currentEmail);applyRoleUI();await startAuthenticatedApp();
 }
 const originalRenderProducts=renderProducts;
 renderProducts=function(){originalRenderProducts();if(currentProfile?.role==="vendedor")document.querySelectorAll("#productList [data-edit],#productList [data-delete]").forEach(b=>b.remove());};
