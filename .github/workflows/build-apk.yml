@@ -3,10 +3,11 @@ name: Construir APK Android
 on:
   workflow_dispatch:
   push:
+    branches:
+      - trabajo/sincronizacion-nube
     paths:
       - '.github/workflows/build-apk.yml'
-      - 'Diego_cocina_en_casa_proyecto_Android-1.zip'
-      - 'android-overrides.tar.gz'
+      - 'android-source/**'
 
 jobs:
   build:
@@ -16,16 +17,11 @@ jobs:
       - name: Descargar repositorio
         uses: actions/checkout@v4
 
-      - name: Verificar, descomprimir y aplicar mejoras
+      - name: Verificar código fuente
         run: |
-          test -f Diego_cocina_en_casa_proyecto_Android-1.zip
-          mkdir -p android-project
-          unzip -q Diego_cocina_en_casa_proyecto_Android-1.zip -d android-project
-          PROJECT_DIR=$(dirname "$(find android-project -name settings.gradle -print -quit)")
-          test -n "$PROJECT_DIR"
-          if [ -f android-overrides.tar.gz ]; then
-            tar -xzf android-overrides.tar.gz -C "$PROJECT_DIR"
-          fi
+          test -f android-source/settings.gradle
+          test -f android-source/app/build.gradle
+          test -f android-source/app/src/main/assets/www/app.js
 
       - name: Configurar Java
         uses: actions/setup-java@v4
@@ -38,46 +34,39 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Corregir archivos Java y dependencias
+      - name: Preparar archivos Java y dependencias
+        working-directory: android-source
         run: |
-          PROJECT_DIR=$(dirname "$(find android-project -name settings.gradle -print -quit)")
-          test -n "$PROJECT_DIR"
-          APP_DIR="$PROJECT_DIR/app"
-
-          python3 - "$APP_DIR" <<'PY'
-          import sys
+          python3 - <<'PY'
           from pathlib import Path
 
-          app = Path(sys.argv[1])
-
+          app = Path("app")
           for file in app.rglob("*.java"):
               data = file.read_bytes()
-              data = data.removeprefix(b"\xef\xbb\xbf")
-              data = data.lstrip(b"\r\n")
+              data = data.removeprefix(b"\\xef\\xbb\\xbf")
+              data = data.lstrip(b"\\r\\n")
               file.write_bytes(data)
 
           gradle_file = app / "build.gradle"
+          content = gradle_file.read_text(encoding="utf-8")
+          marker = "configurations.configureEach {"
+          if marker not in content:
+              gradle_file.write_text(content + """
 
-          with gradle_file.open("a", encoding="utf-8") as f:
-              f.write("""
-          
           configurations.configureEach {
               exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
               exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
               resolutionStrategy.force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
           }
-          """)
+          """, encoding="utf-8")
           PY
 
       - name: Construir APK
-        run: |
-          PROJECT_DIR=$(dirname "$(find android-project -name settings.gradle -print -quit)")
-          cd "$PROJECT_DIR"
-          gradle assembleDebug
-          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/app-debug.apk"
+        working-directory: android-source
+        run: gradle assembleDebug
 
       - name: Guardar APK
         uses: actions/upload-artifact@v4
         with:
           name: Diego-Cocina-en-Casa-APK
-          path: app-debug.apk
+          path: android-source/app/build/outputs/apk/debug/app-debug.apk
