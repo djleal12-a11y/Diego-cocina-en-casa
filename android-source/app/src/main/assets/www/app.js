@@ -166,15 +166,13 @@ async function pullCloudData(){
       const s={id:old?.id||Date.now()+Math.floor(Math.random()*100000),cloud_id:rs.id,cloud_request_id:rs.client_request_id||old?.cloud_request_id,created:new Date(rs.created_at||Date.now()).getTime(),date:rs.sale_date,client:rs.customer_name||"",product:item.product_name,productId:productLocalId.get(item.product_id)||old?.productId||0,qty:Number(item.quantity)||1,unitPrice:Number(item.unit_price)||0,total:Number(rs.total)||0,payments,payment:rs.payment_status||"Pendiente"};
       await put("sales",s);
     }
-    products=await all("products");sales=(await all("sales")).map(normalizeSale);renderAll();applyRoleUI();
+    products=(await all("products")).filter(p=>currentProfile?.role==="admin"||p.cloud_id);sales=(await all("sales")).map(normalizeSale).filter(s=>currentProfile?.role==="admin"||s.cloud_id);renderAll();applyRoleUI();
   }finally{cloudBusy=false;}
 }
 async function cloudBootstrap(){
-  if(currentProfile?.role==="admin"){
-    await seedAdminProductsIfCloudEmpty();
-    await importLegacyAdminSales();
-  }
+  if(currentProfile?.role==="admin")await seedAdminProductsIfCloudEmpty();
   await pullCloudData();
+  if(currentProfile?.role==="admin"){await importLegacyAdminSales();await pullCloudData();}
   if(realtimeChannel)await supabaseClient.removeChannel(realtimeChannel);
   realtimeChannel=supabaseClient.channel("diego-cocina-shared-data")
     .on("postgres_changes",{event:"*",schema:"public",table:"products"},()=>setTimeout(()=>pullCloudData().catch(e=>console.error(e)),250))
