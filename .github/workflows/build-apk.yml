@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - '.github/workflows/build-apk.yml'
+      - 'Diego_cocina_en_casa_proyecto_Android-1.zip'
 
 jobs:
   build:
@@ -14,9 +15,10 @@ jobs:
       - name: Descargar repositorio
         uses: actions/checkout@v4
 
-      - name: Descomprimir proyecto
+      - name: Verificar y descomprimir proyecto
         run: |
-          mkdir android-project
+          test -f Diego_cocina_en_casa_proyecto_Android-1.zip
+          mkdir -p android-project
           unzip -q Diego_cocina_en_casa_proyecto_Android-1.zip -d android-project
 
       - name: Configurar Java
@@ -33,6 +35,7 @@ jobs:
       - name: Corregir archivos Java y dependencias
         run: |
           PROJECT_DIR=$(dirname "$(find android-project -name settings.gradle -print -quit)")
+          test -n "$PROJECT_DIR"
           APP_DIR="$PROJECT_DIR/app"
 
           python3 - "$APP_DIR" <<'PY'
