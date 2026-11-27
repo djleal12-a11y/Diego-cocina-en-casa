@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - trabajo/sincronizacion-nube
+      - feature/anulacion-ventas-admin
     paths:
       - '.github/workflows/build-apk.yml'
       - 'android-source/**'
