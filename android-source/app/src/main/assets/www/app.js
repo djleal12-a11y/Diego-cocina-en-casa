@@ -215,11 +215,25 @@ renderHistory=function(){originalRenderHistory();if(currentProfile?.role==="vend
 const roleAwareHistoryRender=renderHistory;
 renderHistory=function(){
   roleAwareHistoryRender();
-  if(currentProfile?.role!=="admin")return;
   document.querySelectorAll("#historyList [data-detail]").forEach(detailButton=>{
     const sale=sales.find(s=>s.id===Number(detailButton.dataset.detail));
-    if(!sale||sale.voided_at||!sale.cloud_id)return;
-    const actions=detailButton.closest("article")?.querySelector(".history-actions");
+    const article=detailButton.closest("article");
+    if(!sale||!article)return;
+    if(sale.voided_at){
+      const pill=article.querySelector(".pill");
+      if(pill){pill.classList.remove("soldout");pill.classList.add("voided");}
+      const financial=article.querySelector("p.muted + .row-card");
+      if(financial)financial.hidden=true;
+      if(!article.querySelector(".void-reason")){
+        const note=document.createElement("p");
+        note.className="void-reason";
+        note.textContent="Motivo de anulación: "+(sale.void_reason||"No especificado");
+        article.append(note);
+      }
+      return;
+    }
+    if(currentProfile?.role!=="admin"||!sale.cloud_id)return;
+    const actions=article.querySelector(".history-actions");
     if(!actions)return;
     const button=document.createElement("button");
     button.type="button";
