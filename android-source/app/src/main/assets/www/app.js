@@ -39,23 +39,6 @@ function updateSaleTotal(){const p=products.find(x=>x.id===Number($("saleProduct
 $("saleProduct").addEventListener("change",updateSaleTotal);$("saleQty").addEventListener("input",updateSaleTotal);$("newProductBtn").onclick=()=>openProduct();
 function openProduct(p=null){$("productForm").reset();$("productId").value=p?.id||"";$("productDialogTitle").textContent=p?"Editar producto":"Nuevo producto";$("productName").value=p?.name||"";$("productDescription").value=p?.description||"";$("productPrice").value=p?.price??"";$("productStock").value=p?.stock??0;$("productStatus").value=p?.status||"Disponible";photoData=p?.photo||"";previewPhoto();$("productPhoto").value="";$("productDialog").showModal();}
 function editProduct(id){const p=products.find(x=>x.id===id);if(p)openProduct(p);}
-const roleAwareHistoryRender=renderHistory;
-renderHistory=function(){
-  roleAwareHistoryRender();
-  if(currentProfile?.role!=="admin")return;
-  document.querySelectorAll("#historyList [data-detail]").forEach(detailButton=>{
-    const sale=sales.find(s=>s.id===Number(detailButton.dataset.detail));
-    if(!sale||sale.voided_at||!sale.cloud_id)return;
-    const actions=detailButton.closest("article")?.querySelector(".history-actions");
-    if(!actions)return;
-    const button=document.createElement("button");
-    button.type="button";
-    button.className="small-btn danger-btn";
-    button.textContent="Anular venta";
-    button.onclick=()=>voidSale(sale.id);
-    actions.append(button);
-  });
-};
 async function voidSale(id){
   if(currentProfile?.role!=="admin"){toast("Solo el administrador puede anular ventas.");return;}
   const sale=sales.find(s=>s.id===id);
@@ -229,6 +212,24 @@ const originalRenderProducts=renderProducts;
 renderProducts=function(){originalRenderProducts();if(currentProfile?.role==="vendedor")document.querySelectorAll("#productList [data-edit],#productList [data-delete]").forEach(b=>b.remove());};
 const originalRenderHistory=renderHistory;
 renderHistory=function(){originalRenderHistory();if(currentProfile?.role==="vendedor")document.querySelectorAll("#historyList [data-payment]").forEach(b=>b.remove());};
+const roleAwareHistoryRender=renderHistory;
+renderHistory=function(){
+  roleAwareHistoryRender();
+  if(currentProfile?.role!=="admin")return;
+  document.querySelectorAll("#historyList [data-detail]").forEach(detailButton=>{
+    const sale=sales.find(s=>s.id===Number(detailButton.dataset.detail));
+    if(!sale||sale.voided_at||!sale.cloud_id)return;
+    const actions=detailButton.closest("article")?.querySelector(".history-actions");
+    if(!actions)return;
+    const button=document.createElement("button");
+    button.type="button";
+    button.className="small-btn danger-btn";
+    button.textContent="Anular venta";
+    button.onclick=()=>voidSale(sale.id);
+    actions.append(button);
+  });
+};
+
 async function deleteProduct(id){
   if(currentProfile?.role!=="admin")return;
   const p=products.find(x=>x.id===id);if(!p)return;
